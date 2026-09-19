@@ -1,0 +1,65 @@
+# Chapter 1 — Using neural nets to recognize handwritten digits
+
+## Opening: why this problem is hard
+Recognizing digits feels trivial because the brain devotes enormous dedicated machinery to vision, all of it unconscious. The difficulty only becomes obvious when you try to write the rules down — "a 9 is a loop plus a downstroke" dissolves into endless exceptions. Neural networks sidestep rule-writing entirely: feed the system many labeled examples and let it infer the rules itself, with accuracy improving as you add data. The chapter's target is a 74-line program, no libraries, that exceeds 96% accuracy; later chapters push past 99%.
+
+## Perceptrons
+The earliest artificial neuron, from Rosenblatt in the 1950s–60s. It takes binary inputs, assigns each a weight expressing its importance, and outputs 1 only if the weighted sum clears a threshold.
+
+- **Intuition:** a device that weighs evidence. The cheese-festival example makes this concrete — a large weight on "good weather" means that factor dominates, and lowering the threshold makes the neuron more eager to say yes.
+- **Notation:** rewrite the weighted sum as a dot product, and replace the threshold with a bias `b = −threshold`. The rule becomes: output 1 when `w·x + b > 0`. Bias measures how easily the neuron fires.
+- **Layers:** neurons in a second layer weigh the decisions of the first, so each layer reasons at a more abstract level.
+- **Universality:** a perceptron with two weights of −2 and bias 3 implements NAND. Since NAND is universal for computation, networks of perceptrons can compute anything — you can even wire up a two-bit adder.
+
+That universality result is a bit of a letdown on its own: it makes perceptrons sound like relabeled logic gates. The real payoff is that weights and biases can be *tuned automatically* by a learning algorithm, so the network discovers circuits you'd struggle to design by hand.
+
+## Sigmoid neurons
+Perceptrons are hostile to learning: nudging one weight can flip an output from 0 to 1, which cascades through the network and scrambles behavior on everything else. There's no way to make gradual progress.
+
+The fix is a neuron whose output moves smoothly. Inputs and outputs become real values in [0,1], and the output is `σ(w·x + b)` where `σ(z) = 1/(1 + e^−z)`.
+
+- The formula matters less than the shape — it's a smoothed step function. For large positive or large negative `z` it behaves almost exactly like a perceptron; the difference lives in the middle.
+- Smoothness means the change in output is approximately a linear combination of the weight and bias changes (via partial derivatives). That's the property that makes deliberate, incremental improvement possible.
+- Other activation functions work too; σ is popular partly because exponentials differentiate cleanly.
+- Continuous outputs need a convention for yes/no answers — e.g. treat anything ≥ 0.5 as a positive classification.
+
+## Network architecture
+Standard vocabulary: an input layer, one or more **hidden** layers (meaning only "neither input nor output"), and an output layer. Multi-layer networks are sometimes still called MLPs — a historical misnomer, since they're built from sigmoid neurons.
+
+Designing the input and output layers is usually mechanical (one input neuron per pixel, for instance). Hidden layers are where judgment comes in; there are no clean rules, only accumulated heuristics, such as how to trade layer count against training time.
+
+Networks where information flows one direction only are **feedforward**. **Recurrent** networks allow feedback loops, with neurons firing for limited durations so a neuron's output affects its input only later. Recurrent nets are closer in spirit to biology but have been less influential so far, so the book sticks with feedforward.
+
+## A network for classifying digits
+The full problem splits into segmentation (cutting a string of digits into separate images) and classification. Segmentation turns out to be the easier half once you have a good classifier — you can score candidate segmentations by how confident the classifier is across all pieces — so the chapter focuses on classifying single digits.
+
+The architecture is three layers:
+
+| Layer | Size | Notes |
+|---|---|---|
+| Input | 784 | One neuron per pixel of a 28×28 greyscale image, 0.0 = white, 1.0 = black |
+| Hidden | n (example: 15) | Value to be experimented with |
+| Output | 10 | Prediction = whichever neuron has the highest activation |
+
+**Why 10 outputs rather than 4 binary-encoded ones?** Empirically it just works better. The offered explanation: hidden neurons plausibly learn to detect component shapes — strokes and arcs — and those relate naturally to whole digits, but there's no reason such shapes would correlate with the most significant bit of a binary encoding. This is explicitly a heuristic, not a proof.
+
+## Learning with gradient descent
+**The data.** MNIST provides 60,000 training images (from 250 writers, split between Census Bureau employees and high schoolers) and 10,000 test images drawn from a *different* 250 people, so test accuracy measures generalization to unseen handwriting.
+
+**The cost function.** Training input `x` is a 784-dimensional vector; the desired output `y(x)` is a 10-dimensional one-hot vector. The quadratic cost (MSE) averages the squared distance between actual and desired outputs. It's near zero exactly when the network is right about everything.
+
+Why optimize a proxy instead of accuracy directly? Because the count of correctly classified images isn't a smooth function of the weights — small tweaks usually change nothing at all, so there's no signal to follow. A smooth cost always tells you which direction helps.
+
+**The algorithm.** Analytic minimization is hopeless with billions of parameters, so instead picture the cost as a valley and roll a ball downhill:
+
+- A small move changes the cost by roughly `ΔC ≈ ∇C · Δv`.
+- Choose `Δv = −η∇C`, which makes `ΔC ≈ −η‖∇C‖²` — guaranteed non-positive.
+- Update: `v → v − η∇C`, repeated until you reach (hopefully) a minimum.
+- The learning rate `η` must be small enough that the linear approximation holds, but not so small that progress crawls.
+- Applied to a network, the variables are the weights and biases themselves.
+
+**Stochastic gradient descent.** The exact gradient is an average over every training example, which is slow. Instead, estimate it from a small randomly chosen **mini-batch**, update, then draw another. One pass through the training data is an **epoch**. The analogy is polling versus running a full election: with 60,000 examples and batches of 10, you get roughly a 6,000× speedup, and the estimate doesn't need to be exact — you only need to be headed roughly downhill.
+
+A caution on conventions: the `1/n` and `1/m` scaling factors are sometimes omitted in other people's work, which just amounts to rescaling `η`.
+
+**Closing note.** You don't need to visualize 5-million-dimensional surfaces. Mathematicians handle high dimensions by swapping the visual picture for algebraic representations — which is exactly what the `ΔC ≈ ∇C · Δv` derivation does.
